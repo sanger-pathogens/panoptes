@@ -62,10 +62,19 @@ class SettingsDAO(object):
         dbCursor = DQXDbTools.DBCursor(self._calculationObject.credentialInfo, self._datasetId)
         self.__updateConnectionSettings(dbCursor, local_file = 0, db = self._datasetId)
         
-        with self.getDBCursor() as cur:
-            cur.db.autocommit(True)
-            cur.execute(sql, args)
-        
+        # In MySQL 8.0 variable assignments within expressions results in a "deprecated and will be removed in a future release"
+        # warning from the server, which raises a Warning in the python client code
+        try:
+            with self.getDBCursor() as cur:
+                cur.db.autocommit(True)
+                cur.execute(sql, args)
+        except Warning as w:
+            # if it's the warning we want to ignore, log a warning message but ignore the Exception
+            if str(w).startswith("Setting user variables within expressions is deprecated and will be removed in a future release"):
+                self._log("WARNING: "+str(w))
+            # re-raise anything else
+            else:
+                raise w
 
     #Function specifically for LOAD DATA LOCAL INFILE
     def _execSqlLoad(self, sql, *args):
@@ -418,7 +427,6 @@ class SettingsDAO(object):
             raise
         
     def insert2DIndexes(self, remote_hdf5, dimension, tableid, table_settings, max_line_count):
-        
         DQXUtils.CheckValidTableIdentifier(tableid)
 
         if dimension == "row":
@@ -485,6 +493,7 @@ class SettingsDAO(object):
                 tempTable,
                 dimension)
             self._execSql(sql)
+
             self.dropTable(tempTable)
             #Now check we have no NULLS
     
